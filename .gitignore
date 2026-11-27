@@ -1,0 +1,16 @@
+# Go
+/api/bin/
+*.test
+*.out
+# Node / Next.js
+node_modules/
+/web/.next/
+/web/out/
+/web/coverage/
+/web/test-results/
+/web/playwright-report/
+*.tsbuildinfo
+next-env.d.ts
+# Local env
+.env
+.env.local

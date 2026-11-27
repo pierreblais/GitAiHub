@@ -11,6 +11,9 @@
 set -euo pipefail
 DATA="${GITAI_DATA_DIR:-/var/lib/gitai}"
 BIN="${GITAI_BIN_DIR:-/opt/gitai/bin}"
+# The runtime directory only holds sockets and per-process state; a container
+# that was killed leaves it behind and gitaly then refuses to start.
+rm -rf "$DATA/run"
 mkdir -p "$DATA"/{repos,run,tokens}
 : "${GITAI_SHARED_TOKEN:?GITAI_SHARED_TOKEN is required}"
 LISTEN="${GITAI_LISTEN_ADDR:-0.0.0.0:8075}"

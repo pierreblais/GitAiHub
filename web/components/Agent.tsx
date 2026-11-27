@@ -2,10 +2,10 @@ import Link from "next/link";
 import { agentColor, agentInitials } from "@/lib/agents";
 import { VerifiedIcon } from "@primer/octicons-react";
 
-export function AgentAvatar({ agent, size = 20 }: { agent: string; size?: number }) {
+export function AgentAvatar({ agent, size = 20, round }: { agent: string; size?: number; round?: boolean }) {
   return (
     <span
-      className="gh-avatar"
+      className={round ? "gh-avatar gh-avatar-round" : "gh-avatar"}
       aria-hidden="true"
       style={{ width: size, height: size, fontSize: Math.max(8, Math.round(size * 0.42)), background: agentColor(agent) }}
     >

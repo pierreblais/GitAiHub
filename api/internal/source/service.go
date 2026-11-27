@@ -184,6 +184,18 @@ func (s *Service) ListCommits(ctx context.Context, name, rev, p string, offset, 
 	return cs, nil
 }
 
+// CountCommits counts the commits reachable from rev (touching path, if set).
+func (s *Service) CountCommits(ctx context.Context, name, rev, p string) (int, error) {
+	repo, err := s.path(ctx, name)
+	if err != nil {
+		return 0, err
+	}
+	if rev, err = s.revision(repo, rev); err != nil {
+		return 0, err
+	}
+	return s.Gateway.CountCommits(ctx, repo.RelativePath, rev, cleanPath(p))
+}
+
 // GetCommit returns one commit with its diff.
 func (s *Service) GetCommit(ctx context.Context, name, id string) (*Commit, []FileDiff, error) {
 	repo, err := s.path(ctx, name)

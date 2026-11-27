@@ -361,6 +361,13 @@ func (s *Server) listCommits(w http.ResponseWriter, r *http.Request) {
 		list = append(list, toCommit(name, c))
 	}
 	resp["commits"] = list
+	// The total is only computed for the first page, like a repository's
+	// "N commits" link; later pages leave it out.
+	if tok.Offset == 0 {
+		if n, err := s.Source.CountCommits(r.Context(), name, query(r, "revision", "revision"), query(r, "path", "path")); err == nil {
+			resp["totalSize"] = n
+		}
+	}
 	writeJSON(w, 200, resp)
 }
 

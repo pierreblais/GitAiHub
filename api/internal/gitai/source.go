@@ -179,6 +179,18 @@ func (c *Client) ListCommits(ctx context.Context, rel, rev, p string, offset, li
 	return out, err
 }
 
+func (c *Client) CountCommits(ctx context.Context, rel, rev, p string) (int, error) {
+	req := &gitalypb.CountCommitsRequest{Repository: c.repo(rel), Revisions: [][]byte{[]byte(rev)}}
+	if p != "" {
+		req.Path = []byte(p)
+	}
+	resp, err := c.commits.CountCommits(ctx, req)
+	if err != nil {
+		return 0, translate(err)
+	}
+	return int(resp.GetCount()), nil
+}
+
 func (c *Client) GetCommits(ctx context.Context, rel string, ids []string) (map[string]*source.Commit, error) {
 	out := map[string]*source.Commit{}
 	if len(ids) == 0 {

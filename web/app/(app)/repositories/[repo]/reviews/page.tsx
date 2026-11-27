@@ -1,12 +1,10 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import { CodeReviewIcon, CheckIcon, CommentIcon } from "@primer/octicons-react";
+import { CodeReviewIcon } from "@primer/octicons-react";
 import { api, enc } from "@/lib/api";
 import type { Review } from "@/lib/types";
-import { AgentLink } from "@/components/Agent";
-import { RelativeTime } from "@/components/Time";
 import { Blankslate } from "@/components/Blankslate";
-import { ReviewStateLabel } from "@/components/ReviewState";
+import { ReviewRow } from "@/components/ReviewRow";
 
 export const metadata: Metadata = { title: "Reviews" };
 
@@ -39,28 +37,7 @@ export default async function ReviewsPage({ params, searchParams }: { params: Pr
         ) : (
           <ul className="list-style-none">
             {reviews.map((r) => (
-              <li key={r.id} className="Box-row d-flex flex-items-start" style={{ gap: 12 }} data-testid="review">
-                <ReviewStateLabel state={r.state} />
-                <div className="flex-1" style={{ minWidth: 0 }}>
-                  <Link href={`/repositories/${repo}/reviews/${r.id}`} className="f4 text-bold color-fg-default">
-                    {r.title || `Review ${r.id}`}
-                  </Link>
-                  {r.approved && r.state === "OPEN" ? (
-                    <span className="Label Label--success ml-2">
-                      <CheckIcon size={12} /> Approved
-                    </span>
-                  ) : null}
-                  <div className="f6 color-fg-muted mt-1 d-flex flex-wrap flex-items-center" style={{ gap: 6 }}>
-                    #{r.id} opened <RelativeTime iso={r.createTime} /> by <AgentLink agent={r.author} size={16} /> into{" "}
-                    <span className="branch-name">{r.targetBranch}</span> · {r.files.length} files
-                  </div>
-                </div>
-                {r.comments.length ? (
-                  <span className="f6 color-fg-muted">
-                    <CommentIcon /> {r.comments.length}
-                  </span>
-                ) : null}
-              </li>
+              <ReviewRow key={r.id} repo={repo} review={r} />
             ))}
           </ul>
         )}

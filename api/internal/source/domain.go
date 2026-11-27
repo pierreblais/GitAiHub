@@ -199,6 +199,7 @@ type Gateway interface {
 	ListTree(ctx context.Context, repo, rev, path string) ([]TreeEntry, error)
 	ReadBlob(ctx context.Context, repo, rev, path string, maxBytes int64) (*Blob, error)
 	ListCommits(ctx context.Context, repo, rev, path string, offset, limit int) ([]*Commit, error)
+	CountCommits(ctx context.Context, repo, rev, path string) (int, error)
 	GetCommits(ctx context.Context, repo string, ids []string) (map[string]*Commit, error)
 	CommitDiff(ctx context.Context, repo string, commit *Commit) ([]FileDiff, error)
 	Blame(ctx context.Context, repo, rev, path string) (*Blame, error)

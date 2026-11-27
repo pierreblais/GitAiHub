@@ -9,9 +9,10 @@ test.beforeEach(async ({ page }) => {
 
 test("dashboard lists the demo repositories and agent activity", async ({ page }) => {
   for (const name of ["orbit", "nebula-web", "agent-playbooks"]) {
-    await expect(page.getByRole("link", { name, exact: true }).first()).toBeVisible();
+    await expect(page.getByTestId("top-repositories").getByRole("link", { name: `gitai/${name}` })).toBeVisible();
   }
   await expect(page.getByText("Recent agent activity")).toBeVisible();
+  await expect(page.getByText("Open reviews")).toBeVisible();
 });
 
 test("code, blame and history of a file", async ({ page }) => {
@@ -56,4 +57,18 @@ test("search finds code", async ({ page }) => {
 test("unknown repository is a 404 page", async ({ page }) => {
   const resp = await page.goto("/repositories/does-not-exist");
   expect(resp?.status()).toBe(404);
+});
+
+test("global navigation drawer and repository About panel", async ({ page }) => {
+  await page.getByRole("button", { name: "Open global navigation menu" }).click();
+  const drawer = page.getByRole("complementary", { name: "Global navigation" });
+  await expect(drawer.getByRole("link", { name: "gitai/orbit" })).toBeVisible();
+  await drawer.getByRole("link", { name: "gitai/orbit" }).click();
+  await expect(page.getByRole("heading", { name: "About" })).toBeVisible();
+  await expect(page.getByRole("link", { name: /\d+ Commits?/ })).toBeVisible();
+});
+
+test("all reviews across repositories", async ({ page }) => {
+  await page.goto("/reviews");
+  await expect(page.getByTestId("review-row").first()).toBeVisible();
 });

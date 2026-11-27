@@ -28,6 +28,11 @@ import (
 )
 
 func main() {
+	// "gitaihub-api healthcheck" probes /readyz of a running server, for
+	// container health checks in images without a shell or curl.
+	if len(os.Args) > 1 && os.Args[1] == "healthcheck" {
+		os.Exit(healthcheck())
+	}
 	if err := run(); err != nil {
 		slog.Error("gitaihub-api stopped", "error", err)
 		os.Exit(1)
@@ -155,4 +160,25 @@ func discover(ctx context.Context, cfg config.Config, gc *gitai.Client, catalog 
 		case <-tick.C:
 		}
 	}
+}
+
+// healthcheck returns 0 when the server on GITAIHUB_HTTP_ADDR reports ready.
+func healthcheck() int {
+	addr := os.Getenv("GITAIHUB_HTTP_ADDR")
+	if addr == "" {
+		addr = ":8080"
+	}
+	if strings.HasPrefix(addr, ":") {
+		addr = "127.0.0.1" + addr
+	}
+	client := &http.Client{Timeout: 3 * time.Second}
+	resp, err := client.Get("http://" + addr + "/readyz")
+	if err != nil {
+		return 1
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return 1
+	}
+	return 0
 }

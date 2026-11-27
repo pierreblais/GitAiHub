@@ -6,6 +6,7 @@
 #   GITAI_LISTEN_ADDR    TCP listen address (default 0.0.0.0:8075)
 #   GITAI_PROTECT_MAIN   agent allowed to land on main (default: all agents allowed)
 #   GITAI_EXTRA_CONFIG   raw TOML appended to the config (e.g. [[graft.review.rule]] blocks)
+#   GITAI_EXTRA_CONFIG_FILE  path of a TOML file appended the same way
 #   GITAI_DATA_DIR, GITAI_BIN_DIR  override /var/lib/gitai and /opt/gitai/bin
 set -euo pipefail
 DATA="${GITAI_DATA_DIR:-/var/lib/gitai}"
@@ -47,6 +48,7 @@ CFG="$DATA/config.toml"
   echo "[graft.changelog]"; echo "disabled = false"
   echo "[graft.derived]"; echo "disabled = false"; echo "eager = false"
   [ -n "${GITAI_EXTRA_CONFIG:-}" ] && printf '%s\n' "$GITAI_EXTRA_CONFIG"
+  [ -n "${GITAI_EXTRA_CONFIG_FILE:-}" ] && cat "$GITAI_EXTRA_CONFIG_FILE"
   true
 } > "$CFG"
 exec "$BIN/gitaly" serve "$CFG"

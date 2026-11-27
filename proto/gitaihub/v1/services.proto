@@ -1,0 +1,264 @@
+syntax = "proto3";
+
+package gitaihub.v1;
+
+import "google/api/annotations.proto";
+import "google/api/client.proto";
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+import "gitaihub/v1/resources.proto";
+
+option go_package = "github.com/pierreblais/gitaihub/api/gen/gitaihub/v1;gitaihubv1";
+
+// Source context: read-only view of repositories, code and history.
+service SourceService {
+  rpc ListRepositories(ListRepositoriesRequest) returns (ListRepositoriesResponse) {
+    option (google.api.http) = {get: "/v1/repositories"};
+  }
+  rpc GetRepository(GetRepositoryRequest) returns (Repository) {
+    option (google.api.http) = {get: "/v1/{name=repositories/*}"};
+    option (google.api.method_signature) = "name";
+  }
+  rpc ListBranches(ListRefsRequest) returns (ListRefsResponse) {
+    option (google.api.http) = {get: "/v1/{parent=repositories/*}/branches"};
+  }
+  rpc ListTags(ListRefsRequest) returns (ListRefsResponse) {
+    option (google.api.http) = {get: "/v1/{parent=repositories/*}/tags"};
+  }
+  // The tree of a directory at a revision, with the last commit of each entry.
+  rpc GetTree(GetTreeRequest) returns (Tree) {
+    option (google.api.http) = {get: "/v1/{repository=repositories/*}/tree"};
+  }
+  rpc GetBlob(GetBlobRequest) returns (BlobView) {
+    option (google.api.http) = {get: "/v1/{repository=repositories/*}/blob"};
+  }
+  // Line attribution, computed and memoized by gitai's DerivedDataService.
+  rpc GetBlame(GetBlobRequest) returns (BlameView) {
+    option (google.api.http) = {get: "/v1/{repository=repositories/*}/blame"};
+  }
+  rpc ListCommits(ListCommitsRequest) returns (ListCommitsResponse) {
+    option (google.api.http) = {get: "/v1/{parent=repositories/*}/commits"};
+  }
+  // A commit with its landing and diff.
+  rpc GetCommit(GetCommitRequest) returns (CommitView) {
+    option (google.api.http) = {get: "/v1/{name=repositories/*/commits/*}"};
+  }
+  rpc SearchCode(SearchCodeRequest) returns (SearchCodeResponse) {
+    option (google.api.http) = {get: "/v1/{repository=repositories/*}/search"};
+  }
+}
+
+// Review context: gitai reviews, verdicts and comments. The only writes in
+// the MVP, made with the user's own gitai identity.
+service ReviewService {
+  rpc ListReviews(ListReviewsRequest) returns (ListReviewsResponse) {
+    option (google.api.http) = {get: "/v1/{parent=repositories/*}/reviews"};
+  }
+  rpc GetReview(GetReviewRequest) returns (Review) {
+    option (google.api.http) = {get: "/v1/{name=repositories/*/reviews/*}"};
+  }
+  rpc SubmitVerdict(SubmitVerdictRequest) returns (Review) {
+    option (google.api.http) = {
+      post: "/v1/{name=repositories/*/reviews/*}:submitVerdict"
+      body: "*"
+    };
+  }
+  rpc CreateComment(CreateCommentRequest) returns (Comment) {
+    option (google.api.http) = {
+      post: "/v1/{parent=repositories/*/reviews/*}/comments"
+      body: "comment"
+    };
+  }
+}
+
+// Agent activity context: the changeset log and per-agent statistics.
+service ActivityService {
+  rpc ListChangesets(ListChangesetsRequest) returns (ListChangesetsResponse) {
+    option (google.api.http) = {
+      get: "/v1/changesets"
+      additional_bindings {get: "/v1/{parent=repositories/*}/changesets"}
+    };
+  }
+  // Server-sent events: one "changeset" event per new changeset, within
+  // seconds of gitai recording it (SLO: 99% under 5 s).
+  rpc WatchChangesets(WatchChangesetsRequest) returns (stream Changeset) {
+    option (google.api.http) = {get: "/v1/changesets:watch"};
+  }
+  rpc ListAgents(ListAgentsRequest) returns (ListAgentsResponse) {
+    option (google.api.http) = {get: "/v1/agents"};
+  }
+  rpc GetAgent(GetAgentRequest) returns (Agent) {
+    option (google.api.http) = {get: "/v1/{name=agents/*}"};
+  }
+}
+
+// Identity context: GitaiHub's own users and sessions.
+service IdentityService {
+  // Signs in. Sets the gitaihub_session cookie and returns the same token
+  // for use as "Authorization: Bearer".
+  rpc CreateSession(CreateSessionRequest) returns (Session) {
+    option (google.api.http) = {
+      post: "/v1/sessions"
+      body: "*"
+    };
+  }
+  rpc DeleteSession(DeleteSessionRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {delete: "/v1/{name=sessions/current}"};
+  }
+  rpc GetCurrentUser(GetCurrentUserRequest) returns (User) {
+    option (google.api.http) = {get: "/v1/users/me"};
+  }
+}
+
+message ListRepositoriesRequest {
+  int32 page_size = 1;
+  string page_token = 2;
+}
+message ListRepositoriesResponse {
+  repeated Repository repositories = 1;
+  string next_page_token = 2;
+  int32 total_size = 3;
+}
+message GetRepositoryRequest {
+  string name = 1;
+}
+
+message ListRefsRequest {
+  string parent = 1;
+}
+message ListRefsResponse {
+  // "branches" or "tags" in JSON, after the collection.
+  repeated Ref refs = 1;
+}
+
+message GetTreeRequest {
+  string repository = 1;
+  // Branch, tag or commit ID; the default branch when empty.
+  string revision = 2;
+  // Directory path; the root when empty.
+  string path = 3;
+}
+message Tree {
+  string commit_id = 1;
+  repeated TreeEntry entries = 2;
+  // README of the directory, when there is one.
+  Blob readme = 3;
+}
+
+message GetBlobRequest {
+  string repository = 1;
+  string revision = 2;
+  string path = 3;
+}
+message BlobView {
+  string commit_id = 1;
+  Blob blob = 2;
+  Commit last_commit = 3;
+}
+message BlameView {
+  string commit_id = 1;
+  repeated BlameLine lines = 2;
+  // The commits the lines point to, keyed by ID.
+  map<string, Commit> commits = 3;
+}
+
+message ListCommitsRequest {
+  string parent = 1;
+  string revision = 2;
+  // Only commits touching this path.
+  string path = 3;
+  int32 page_size = 4;
+  string page_token = 5;
+}
+message ListCommitsResponse {
+  repeated Commit commits = 1;
+  string next_page_token = 2;
+}
+message GetCommitRequest {
+  string name = 1;
+}
+message CommitView {
+  message Stats {
+    int32 additions = 1;
+    int32 deletions = 2;
+    int32 files = 3;
+  }
+  Commit commit = 1;
+  repeated FileDiff files = 2;
+  Stats stats = 3;
+}
+
+message SearchCodeRequest {
+  string repository = 1;
+  string query = 2;
+  string revision = 3;
+}
+message SearchCodeResponse {
+  string commit_id = 1;
+  repeated CodeMatch matches = 2;
+  bool truncated = 3;
+}
+
+message ListReviewsRequest {
+  string parent = 1;
+  // OPEN (default), LANDED, CLOSED or ALL.
+  string state = 2;
+  int32 page_size = 3;
+}
+message ListReviewsResponse {
+  repeated Review reviews = 1;
+}
+message GetReviewRequest {
+  string name = 1;
+}
+message SubmitVerdictRequest {
+  string name = 1;
+  Verdict.Kind kind = 2;
+  string body = 3;
+  // Must be the review's current head: a verdict on a stale head fails with
+  // FAILED_PRECONDITION.
+  string head_commit_id = 4;
+}
+message CreateCommentRequest {
+  string parent = 1;
+  Comment comment = 2;
+}
+
+message ListChangesetsRequest {
+  // repositories/{repository}, or empty for every repository.
+  string parent = 1;
+  // Only changesets involving this agent.
+  string agent = 2;
+  int32 page_size = 3;
+  string page_token = 4;
+}
+message ListChangesetsResponse {
+  repeated Changeset changesets = 1;
+  string next_page_token = 2;
+}
+message WatchChangesetsRequest {
+  string repository = 1;
+  string agent = 2;
+}
+
+message ListAgentsRequest {}
+message ListAgentsResponse {
+  repeated Agent agents = 1;
+}
+message GetAgentRequest {
+  string name = 1;
+}
+
+message CreateSessionRequest {
+  string username = 1;
+  string password = 2;
+}
+message Session {
+  User user = 1;
+  string token = 2;
+  google.protobuf.Timestamp expire_time = 3;
+}
+message DeleteSessionRequest {
+  string name = 1;
+}
+message GetCurrentUserRequest {}

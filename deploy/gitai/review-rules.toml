@@ -1,0 +1,14 @@
+# Review rules for the demo stack (gitai [[graft.review.rule]]).
+# gitai classifies each changed file (code, tests, docs, config, ...) and
+# evaluates these rules on every read of a review.
+
+[[graft.review.rule]]
+name = "code"
+classes = ["code", "config"]
+approvals = 1
+
+[[graft.review.rule]]
+name = "tests"
+classes = ["tests"]
+approvals = 1
+approvers = ["reviewer", "pierre"]

@@ -1,0 +1,317 @@
+syntax = "proto3";
+
+package gitaihub.v1;
+
+import "google/api/field_behavior.proto";
+import "google/api/resource.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/pierreblais/gitaihub/api/gen/gitaihub/v1;gitaihubv1";
+
+// A Git repository hosted on the gitai server.
+message Repository {
+  option (google.api.resource) = {
+    type: "gitaihub.dev/Repository"
+    pattern: "repositories/{repository}"
+  };
+  // repositories/{repository}. The ID is derived from the gitai relative
+  // path: "Team/Orbit.git" becomes "team-orbit".
+  string name = 1 [(google.api.field_behavior) = IDENTIFIER];
+  string repository_id = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+  // Path of the repository on the gitai storage.
+  string relative_path = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
+  string default_branch = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
+  google.protobuf.Timestamp last_activity_time = 5 [(google.api.field_behavior) = OUTPUT_ONLY];
+  int32 changeset_count = 6 [(google.api.field_behavior) = OUTPUT_ONLY];
+  repeated AgentCount top_agents = 7 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+message AgentCount {
+  string agent = 1;
+  int32 count = 2;
+}
+
+// A branch or tag.
+message Ref {
+  enum Kind {
+    KIND_UNSPECIFIED = 0;
+    BRANCH = 1;
+    TAG = 2;
+  }
+  // repositories/{repository}/branches/{branch} or .../tags/{tag}.
+  string name = 1;
+  string ref_id = 2;
+  Kind kind = 3;
+  Commit target = 4;
+}
+
+message Signature {
+  string name = 1;
+  string email = 2;
+  google.protobuf.Timestamp time = 3;
+}
+
+// Where and how a commit entered the repository, from the changeset log.
+message Landing {
+  string agent = 1;
+  int64 sequence = 2;
+  // land, land_batch, commit_files, ...
+  string operation = 3;
+  string reference = 4;
+  google.protobuf.Timestamp record_time = 5;
+}
+
+message Trailer {
+  string key = 1;
+  string value = 2;
+}
+
+message Commit {
+  option (google.api.resource) = {
+    type: "gitaihub.dev/Commit"
+    pattern: "repositories/{repository}/commits/{commit}"
+  };
+  string name = 1 [(google.api.field_behavior) = IDENTIFIER];
+  string id = 2;
+  repeated string parent_ids = 3;
+  string subject = 4;
+  string body = 5;
+  Signature author = 6;
+  Signature committer = 7;
+  // The agent the commit is attributed to: the actor of its landing when
+  // known (verified), else the author name.
+  string agent = 8;
+  bool agent_verified = 9;
+  Landing landing = 10;
+  repeated Trailer trailers = 11;
+  // From the Graft-Auto-Revert trailer: the commit this one reverts.
+  string auto_revert_of = 12;
+  // From the Graft-Resolved-By trailer: the agent that resolved a conflict.
+  string resolved_by = 13;
+}
+
+message TreeEntry {
+  enum Type {
+    TYPE_UNSPECIFIED = 0;
+    BLOB = 1;
+    TREE = 2;
+    COMMIT = 3; // submodule
+  }
+  string name = 1;
+  string path = 2;
+  Type type = 3;
+  int32 mode = 4;
+  string oid = 5;
+  int64 size = 6;
+  Commit last_commit = 7;
+}
+
+message Blob {
+  string path = 1;
+  string oid = 2;
+  int64 size = 3;
+  // UTF-8 content; empty for binary files. Capped at 1 MiB (truncated).
+  string content = 4;
+  bool binary = 5;
+  bool truncated = 6;
+}
+
+message FileDiff {
+  string old_path = 1;
+  string new_path = 2;
+  // added, deleted, modified, renamed
+  string status = 3;
+  int32 additions = 4;
+  int32 deletions = 5;
+  bool binary = 6;
+  bool too_large = 7;
+  // Unified diff hunks.
+  string patch = 8;
+}
+
+message BlameLine {
+  int32 line_number = 1;
+  string commit_id = 2;
+  string content = 3;
+}
+
+message CodeMatch {
+  string path = 1;
+  int32 line_number = 2;
+  string line = 3;
+}
+
+// A review in gitai: an agent's request to land a commit on a branch.
+message Review {
+  option (google.api.resource) = {
+    type: "gitaihub.dev/Review"
+    pattern: "repositories/{repository}/reviews/{review}"
+  };
+  enum State {
+    STATE_UNSPECIFIED = 0;
+    OPEN = 1;
+    LANDED = 2;
+    CLOSED = 3;
+  }
+  string name = 1 [(google.api.field_behavior) = IDENTIFIER];
+  string id = 2;
+  string target_branch = 3;
+  string base_commit_id = 4;
+  string head_commit_id = 5;
+  string author = 6;
+  string title = 7;
+  string description = 8;
+  State state = 9;
+  // Changed files with gitai's change class (code, tests, docs, config,
+  // comment_only, ...) and the reason for it.
+  repeated ReviewFile files = 10;
+  repeated FileGroup file_groups = 11;
+  repeated Verdict verdicts = 12;
+  // The latest verdict of each actor.
+  repeated Verdict current_verdicts = 13;
+  repeated Comment comments = 14;
+  // gitai's approval rules evaluated on this read.
+  repeated Requirement requirements = 15;
+  bool approved = 16;
+  google.protobuf.Timestamp create_time = 17;
+  google.protobuf.Timestamp update_time = 18;
+}
+
+message ReviewFile {
+  string path = 1;
+  string class = 2;
+  string reason = 3;
+}
+
+message FileGroup {
+  string class = 1;
+  repeated ReviewFile files = 2;
+}
+
+message Verdict {
+  enum Kind {
+    KIND_UNSPECIFIED = 0;
+    APPROVE = 1;
+    REQUEST_CHANGES = 2;
+  }
+  string actor = 1;
+  Kind kind = 2;
+  // The head the verdict applies to; a verdict on an older head is stale.
+  string commit_id = 3;
+  string body = 4;
+  google.protobuf.Timestamp create_time = 5;
+  bool current = 6;
+}
+
+message Comment {
+  string id = 1;
+  string actor = 2;
+  string body = 3;
+  // Set for a line comment.
+  string path = 4;
+  int32 line = 5;
+  string commit_id = 6;
+  google.protobuf.Timestamp create_time = 7;
+}
+
+message Requirement {
+  string rule = 1;
+  string description = 2;
+  int32 required_approvals = 3;
+  int32 approvals = 4;
+  bool satisfied = 5;
+  repeated string paths = 6;
+}
+
+// One entry of gitai's changeset log: an atomic update of one reference.
+message Changeset {
+  option (google.api.resource) = {
+    type: "gitaihub.dev/Changeset"
+    pattern: "repositories/{repository}/changesets/{changeset}"
+  };
+  enum Kind {
+    KIND_UNSPECIFIED = 0;
+    LAND = 1;
+    BATCH_LAND = 2;
+    CONFLICT_RESOLVED = 3;
+    AUTO_REVERT = 4;
+    BRANCH_CREATED = 5;
+    BRANCH_DELETED = 6;
+    UPDATE = 7;
+  }
+  string name = 1 [(google.api.field_behavior) = IDENTIFIER];
+  string repository = 2;
+  int64 sequence = 3;
+  string reference = 4;
+  string branch = 5;
+  string old_oid = 6;
+  string new_oid = 7;
+  string operation = 8;
+  // The agent whose token made the update.
+  string actor = 9;
+  // Every agent involved (the actor and the members of a batched land).
+  repeated string agents = 10;
+  google.protobuf.Timestamp record_time = 11;
+  // True when gitai rewrote the commits while landing them (rebase).
+  bool rewritten = 12;
+  Kind kind = 13;
+  repeated BatchMember members = 14;
+  repeated LandedCommit commits = 15;
+}
+
+message BatchMember {
+  string original_commit_id = 1;
+  string commit_id = 2;
+  string actor = 3;
+  bool rewritten = 4;
+  repeated string resolved_paths = 5;
+}
+
+message LandedCommit {
+  string commit_id = 1;
+  string agent = 2;
+  string subject = 3;
+  string auto_revert_of = 4;
+  string resolved_by = 5;
+}
+
+// An identity that lands changes on gitai, with its statistics.
+message Agent {
+  option (google.api.resource) = {
+    type: "gitaihub.dev/Agent"
+    pattern: "agents/{agent}"
+  };
+  string name = 1 [(google.api.field_behavior) = IDENTIFIER];
+  string agent_id = 2;
+  int32 changeset_count = 3;
+  int32 land_count = 4;
+  int32 commit_count = 5;
+  int32 conflicts_resolved_count = 6;
+  int32 auto_revert_count = 7;
+  int32 reverted_commit_count = 8;
+  repeated string repositories = 9;
+  google.protobuf.Timestamp first_seen_time = 10;
+  google.protobuf.Timestamp last_seen_time = 11;
+  // Commits landed per day for the last 30 days (only on Get).
+  repeated DailyCount daily_commits = 12;
+}
+
+message DailyCount {
+  // YYYY-MM-DD, UTC.
+  string day = 1;
+  int32 count = 2;
+}
+
+// A GitaiHub user (a person, not an agent).
+message User {
+  option (google.api.resource) = {
+    type: "gitaihub.dev/User"
+    pattern: "users/{user}"
+  };
+  string name = 1 [(google.api.field_behavior) = IDENTIFIER];
+  string username = 2;
+  string display_name = 3;
+  // True when the user has a gitai identity, so may comment and give verdicts.
+  bool can_review = 4;
+  google.protobuf.Timestamp create_time = 5;
+}

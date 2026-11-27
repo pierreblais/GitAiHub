@@ -1,0 +1,130 @@
+# GitaiHub demo stack: gitai + Postgres + API + web, with seeded demo
+# repositories and agents that keep landing work.
+#
+#   cp .env.example .env   # optional: change the demo secrets
+#   docker compose up --build
+#
+# Then open http://localhost:3000 and sign in with the admin user from .env
+# (pierre / gitaihub-demo by default).
+
+name: gitaihub
+
+x-agent-tokens: &agent-tokens
+  GITAI_TOKEN_PLANNER: ${GITAI_TOKEN_PLANNER:-demo-token-planner}
+  GITAI_TOKEN_BUILDER: ${GITAI_TOKEN_BUILDER:-demo-token-builder}
+  GITAI_TOKEN_REVIEWER: ${GITAI_TOKEN_REVIEWER:-demo-token-reviewer}
+  GITAI_TOKEN_DOCS_BOT: ${GITAI_TOKEN_DOCS_BOT:-demo-token-docs-bot}
+  GITAI_TOKEN_PIERRE: ${GITAI_TOKEN_PIERRE:-demo-token-pierre}
+
+services:
+  gitai:
+    build:
+      context: deploy/gitai
+      args:
+        GITAI_REF: ${GITAI_REF:-v0.4.2}
+    image: gitaihub/gitai:${GITAI_REF:-v0.4.2}
+    environment:
+      <<: *agent-tokens
+      GITAI_SHARED_TOKEN: ${GITAI_SHARED_TOKEN:-demo-shared-token}
+      GITAI_AGENTS: planner,builder,reviewer,docs-bot,pierre
+      GITAI_EXTRA_CONFIG_FILE: /etc/gitai/review-rules.toml
+    volumes:
+      - gitai-data:/var/lib/gitai
+      - ./deploy/gitai/review-rules.toml:/etc/gitai/review-rules.toml:ro
+    ports:
+      - "127.0.0.1:8075:8075" # gRPC, for the graft CLI and agents on this machine
+    healthcheck:
+      test: ["CMD", "bash", "-c", "</dev/tcp/127.0.0.1/8075"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: gitaihub
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-gitaihub}
+      POSTGRES_DB: gitaihub
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "gitaihub"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
+  api:
+    build: api
+    image: gitaihub/api:dev
+    environment:
+      GITAIHUB_HTTP_ADDR: ":8080"
+      GITAIHUB_DATABASE_URL: postgres://gitaihub:${POSTGRES_PASSWORD:-gitaihub}@postgres:5432/gitaihub?sslmode=disable
+      GITAI_ADDRESS: tcp://gitai:8075
+      GITAI_TOKEN: ${GITAI_SHARED_TOKEN:-demo-shared-token}
+      GITAIHUB_ADMIN_USERNAME: ${GITAIHUB_ADMIN_USERNAME:-pierre}
+      GITAIHUB_ADMIN_PASSWORD: ${GITAIHUB_ADMIN_PASSWORD:-gitaihub-demo}
+      # Lets the admin post review comments and verdicts as the gitai identity "pierre".
+      GITAIHUB_USER_GITAI_TOKENS: ${GITAIHUB_ADMIN_USERNAME:-pierre}=${GITAI_TOKEN_PIERRE:-demo-token-pierre}
+      GITAIHUB_COOKIE_SECURE: ${GITAIHUB_COOKIE_SECURE:-false}
+      GITAIHUB_DISCOVERY_INTERVAL: 10s
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    ports:
+      - "127.0.0.1:8080:8080" # JSON API and /metrics
+    depends_on:
+      gitai: { condition: service_healthy }
+      postgres: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/gitaihub-api", "healthcheck"]
+      interval: 5s
+      timeout: 4s
+      retries: 30
+    restart: unless-stopped
+
+  # Creates the demo repositories once (idempotent), then keeps landing a
+  # small change every SEED_LIVE_INTERVAL so the live feed has something to
+  # show. Set SEED_LIVE_INTERVAL to an empty value to seed once and exit.
+  seed:
+    image: gitaihub/api:dev
+    entrypoint: ["/usr/local/bin/gitaihub-seed"]
+    environment:
+      GITAI_ADDRESS: tcp://gitai:8075
+      GITAI_TOKEN: ${GITAI_SHARED_TOKEN:-demo-shared-token}
+      SEED_AGENT_TOKENS: planner=${GITAI_TOKEN_PLANNER:-demo-token-planner},builder=${GITAI_TOKEN_BUILDER:-demo-token-builder},reviewer=${GITAI_TOKEN_REVIEWER:-demo-token-reviewer},docs-bot=${GITAI_TOKEN_DOCS_BOT:-demo-token-docs-bot},pierre=${GITAI_TOKEN_PIERRE:-demo-token-pierre}
+      SEED_LIVE_INTERVAL: ${SEED_LIVE_INTERVAL-60s}
+    depends_on:
+      gitai: { condition: service_healthy }
+      api: { condition: service_started }
+    restart: on-failure
+
+  web:
+    build: web
+    image: gitaihub/web:dev
+    environment:
+      GITAIHUB_API_URL: http://api:8080
+    ports:
+      - "${GITAIHUB_WEB_PORT:-3000}:3000"
+    depends_on:
+      api: { condition: service_healthy }
+    restart: unless-stopped
+
+  # Optional HTTPS front for a cloud VM: `docker compose --profile tls up -d`
+  # with GITAIHUB_DOMAIN pointing at the VM (Caddy gets a certificate).
+  caddy:
+    profiles: ["tls"]
+    image: caddy:2-alpine
+    command: caddy reverse-proxy --from ${GITAIHUB_DOMAIN:-localhost} --to web:3000
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - caddy-data:/data
+    depends_on:
+      - web
+    restart: unless-stopped
+
+volumes:
+  gitai-data:
+  postgres-data:
+  caddy-data:
